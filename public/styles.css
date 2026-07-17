@@ -81,8 +81,8 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
 
 /* chore line + hover tooltip */
 .chore-wrap { position: relative; }
-.chore { font-size: 15px; color: var(--muted); max-width: 100%; line-height: 1.35; cursor: default; text-align: center; }
-.chore.multi { color: #374151; font-weight: 550; }
+.chore { font-size: 18px; font-weight: 650; color: var(--ink); max-width: 100%; line-height: 1.3; letter-spacing: -.01em; cursor: default; text-align: center; }
+.chore.multi { color: var(--ink); }
 .out-badge { display: inline-block; font-size: 13px; font-weight: 650; letter-spacing: .08em; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 5px 14px; }
 .tooltip {
   position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px);
@@ -98,11 +98,11 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
 
 /* giant round checkbox */
 .checkbox {
-  width: 72px; height: 72px; border-radius: 50%; border: 3px solid var(--line-strong);
+  width: 52px; height: 52px; border-radius: 50%; border: 3px solid var(--line-strong);
   background: #fff; display: grid; place-items: center; transition: background .18s, border-color .18s, transform .08s;
   color: transparent;
 }
-.checkbox svg { width: 34px; height: 34px; }
+.checkbox svg { width: 26px; height: 26px; }
 .checkbox:hover { border-color: #9aa0aa; }
 .checkbox:active { transform: scale(.95); }
 .checkbox.done { background: var(--green); border-color: var(--green); color: #fff; }
