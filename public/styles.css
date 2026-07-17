@@ -115,6 +115,9 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
 .away-link { margin-top: 14px; background: none; border: none; color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 2px; padding: 4px; }
 .away-link:hover { color: var(--ink); }
 
+.conn-error { grid-column: 1 / -1; text-align: center; color: var(--muted); background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 40px 24px; font-size: 16px; }
+.conn-error span { font-size: 14px; display: inline-block; margin-top: 8px; }
+
 /* ── Chore guide ───────────────────────────────────── */
 .chore-guide { margin-top: 44px; }
 .guide-title { font-size: 20px; letter-spacing: -.01em; margin: 0 0 4px; }

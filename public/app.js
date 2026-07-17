@@ -1,11 +1,6 @@
 /* Chores — modern card board. Vanilla JS, no build step. */
 
-const LS = {
-  get api() { return localStorage.getItem('cd_api') || ''; },
-  set api(v) { localStorage.setItem('cd_api', v); },
-  get pw() { return localStorage.getItem('cd_pw') || ''; },
-  set pw(v) { localStorage.setItem('cd_pw', v); },
-};
+const CONFIG = window.CHORE_CONFIG || { apiBase: '', housePassword: '' };
 
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -29,46 +24,29 @@ function avatarHTML(u, cls = 'avatar') {
 }
 
 // ── API ────────────────────────────────────────────────────────
-function base() { return (LS.api || '').replace(/\/$/, ''); }
+function base() { return (CONFIG.apiBase || '').replace(/\/$/, ''); }
 async function api(path, opts = {}) {
   const res = await fetch(base() + path, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', 'x-house-password': LS.pw, ...(opts.headers || {}) },
+    headers: { 'Content-Type': 'application/json', 'x-house-password': CONFIG.housePassword, ...(opts.headers || {}) },
   });
-  if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
   return res.json();
 }
 
-// ── Login ──────────────────────────────────────────────────────
-$('#apiBase').value = LS.api;
-$('#loginBtn').addEventListener('click', doLogin);
-$('#password').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
-
-async function doLogin() {
-  LS.api = $('#apiBase').value.trim();
-  $('#loginError').textContent = '';
-  try {
-    const res = await fetch(base() + '/api/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: $('#password').value }),
-    }).then((r) => r.json());
-    if (!res.ok) { $('#loginError').textContent = 'Wrong password.'; return; }
-    LS.pw = $('#password').value;
-    enterApp();
-  } catch { $('#loginError').textContent = 'Could not reach the server. Check the URL.'; }
-}
-function logout() { LS.pw = ''; clearInterval(pollTimer); $('#app').classList.add('hidden'); $('#login').classList.remove('hidden'); }
-$('#logoutBtn').addEventListener('click', logout);
-
-function enterApp() {
-  $('#login').classList.add('hidden'); $('#app').classList.remove('hidden');
-  refresh();
-  pollTimer = setInterval(refresh, 15000);
-}
-if (LS.pw) enterApp();
+// No sign-in — load the board immediately.
+refresh();
+pollTimer = setInterval(refresh, 15000);
 
 // ── Refresh / render ───────────────────────────────────────────
 async function refresh() {
-  try { STATE = await api('/api/state'); render(); } catch { /* handled in api() */ }
+  try {
+    const s = await api('/api/state');
+    if (!s || !Array.isArray(s.users)) throw new Error('unreachable');
+    STATE = s;
+    render();
+  } catch {
+    $('#cards').innerHTML = `<div class="conn-error">Can't reach the chore server.<br /><span>If you're away from the house wifi, the site needs the backend URL set in config.js.</span></div>`;
+  }
 }
 
 function render() {
