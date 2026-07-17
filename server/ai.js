@@ -35,7 +35,7 @@ export async function choremasterReply(userName, userText, context = {}) {
       },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 200,
+        max_tokens: 150,
         system: SYSTEM_PROMPT,
         messages: [
           { role: 'user', content: `${statusLine}\n\n${userName} said to you: "${userText}"\n\nReply in character.` },

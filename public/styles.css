@@ -142,6 +142,10 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
 .drawer .hint { color: var(--muted); font-size: 13.5px; margin: 2px 0 0; }
 .list-item { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .list-item .li-av { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-size: 13px; font-weight: 600; flex: 0 0 34px; object-fit: cover; }
+.li-photo { position: relative; flex: 0 0 34px; width: 34px; height: 34px; cursor: pointer; display: block; }
+.li-photo input { display: none; }
+.li-photo-edit { position: absolute; inset: 0; border-radius: 50%; background: rgba(0,0,0,.5); color: #fff; font-size: 10px; font-weight: 600; display: grid; place-items: center; opacity: 0; transition: opacity .15s; }
+.li-photo:hover .li-photo-edit { opacity: 1; }
 .list-item .li-main { flex: 1; font-size: 14.5px; }
 .list-item .li-sub { color: var(--muted); font-size: 12.5px; }
 .list-item .x { border: none; background: none; color: #9aa0aa; font-size: 18px; padding: 4px 8px; border-radius: 8px; }

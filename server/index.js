@@ -20,7 +20,7 @@ const app = express();
 const PORT = process.env.PORT || 8787;
 const HOUSE_PASSWORD = process.env.HOUSE_PASSWORD || 'dungeonmaster';
 
-app.use(express.json());
+app.use(express.json({ limit: '3mb' })); // room for base64 avatar photos
 app.use(express.urlencoded({ extended: false }));
 app.use(cors({ origin: (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean).length
   ? (process.env.CORS_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean)

@@ -10,7 +10,10 @@ import { db, logEvent, getKV, setKV } from '../db.js';
 export const name = 'telegram';
 
 const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const POLL_MS = (Number(process.env.TELEGRAM_POLL_SECONDS) || 2) * 1000;
+// Small gap between long-poll cycles. getUpdates already long-polls (returns the
+// instant a message arrives), so this just needs to be short to catch messages
+// that land during the brief gap between cycles.
+const POLL_MS = (Number(process.env.TELEGRAM_POLL_SECONDS) || 0.3) * 1000;
 const url = (method) => `https://api.telegram.org/bot${TOKEN}/${method}`;
 
 async function tg(method, payload) {
@@ -71,6 +74,8 @@ function isAddressed(msg) {
   if (text.trim().startsWith('/')) return true;
   if (BOT_USERNAME && text.toLowerCase().includes('@' + BOT_USERNAME)) return true;
   if (BOT_ID && msg.reply_to_message?.from?.id === BOT_ID) return true;
+  // Also respond when addressed by name, e.g. "choremaster whip me".
+  if (/\bchoremaster\b/i.test(text)) return true;
   return false;
 }
 

@@ -19,9 +19,33 @@ function initials(name) {
   return name.trim().split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 }
 function avatarHTML(u, cls = 'avatar') {
-  if (u.avatar && /^https?:\/\//i.test(u.avatar)) return `<img class="${cls}" src="${esc(u.avatar)}" alt="${esc(u.name)}" />`;
+  if (u.avatar && /^(https?:|data:image)/i.test(u.avatar)) return `<img class="${cls}" src="${esc(u.avatar)}" alt="${esc(u.name)}" />`;
   return `<div class="${cls}" style="background:${colorFor(u.name)}">${esc(initials(u.name))}</div>`;
 }
+
+// Resize/crop a chosen image file to a small square JPEG data URI and save it as
+// the roommate's avatar. Keeps photos tiny (~256px) so they load fast.
+window.uploadAvatar = (userId, input) => {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 256;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const s = Math.min(img.width, img.height);
+      ctx.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      api('/api/users/' + userId, { method: 'PATCH', body: JSON.stringify({ avatar: dataUrl }) })
+        .then(() => { toast('Photo updated'); refresh(); });
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+};
 
 // ── API ────────────────────────────────────────────────────────
 function base() { return (CONFIG.apiBase || '').replace(/\/$/, ''); }
@@ -150,7 +174,11 @@ function closeDrawer() { $('#drawer').classList.add('hidden'); $('#drawerScrim')
 function renderDrawer() {
   const users = STATE.users.map((u) => `
     <div class="list-item">
-      ${avatarHTML(u, 'li-av')}
+      <label class="li-photo" title="Set photo">
+        ${avatarHTML(u, 'li-av')}
+        <span class="li-photo-edit">Edit</span>
+        <input type="file" accept="image/*" onchange="uploadAvatar(${u.id}, this)" />
+      </label>
       <div class="li-main">${esc(u.name)}<div class="li-sub">${u.phone ? esc(u.phone) : 'no number'}</div></div>
       <button class="x" onclick="delUser(${u.id})" title="Remove">✕</button>
     </div>`).join('');

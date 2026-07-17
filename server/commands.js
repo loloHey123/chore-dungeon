@@ -84,9 +84,10 @@ export async function handleInbound({ from, text, telegram, reply }) {
   //   "@choremaster_bot done dishes" → "done dishes"
   //   "/done@ChoreBot dishes"        → "done dishes"
   let body = (text || '').trim();
-  body = body.replace(/^@\S+\s*/, '');       // leading @mention
+  body = body.replace(/^@\S+\s*/, '');              // leading @mention
+  body = body.replace(/^choremaster['’]?s?[,:]?\s+/i, ''); // "choremaster done" → "done"
   if (body.startsWith('/')) body = body.slice(1);
-  body = body.replace(/^(\S+?)@\S+/, '$1');  // "/done@bot" form
+  body = body.replace(/^(\S+?)@\S+/, '$1');         // "/done@bot" form
   const lower = body.toLowerCase();
   const parts = lower.split(/\s+/);
   const word = parts[0];
@@ -177,5 +178,6 @@ export async function handleInbound({ from, text, telegram, reply }) {
   // key is configured, otherwise fall back to the plain "didn't understand" line.
   const info = nudgeTarget(user.id);
   const aiReply = await choremasterReply(user.name, body, info);
+  if (aiReply) logEvent('message', `[choremaster → ${user.name}] ${aiReply}`, user.id);
   return reply(aiReply || `Choremaster doesn't understand “${body}”. Whimper HELP to see what you may ask.`);
 }
