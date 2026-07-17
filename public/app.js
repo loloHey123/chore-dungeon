@@ -76,11 +76,29 @@ function render() {
   $('#weekLabel').textContent = 'Week of ' + STATE.liveWeek.label;
   $('#channelBadge').textContent = STATE.channel;
   renderCards();
+  renderChoreGuide();
   if (!$('#drawer').classList.contains('hidden')) renderDrawer();
 }
 
 function renderCards() {
   $('#cards').innerHTML = STATE.users.map(cardHTML).join('');
+}
+
+function renderChoreGuide() {
+  const el = $('#choreGuide');
+  if (!STATE.chores.length) { el.innerHTML = ''; return; }
+  const items = STATE.chores.map((c, i) => `
+    <div class="guide-item">
+      <div class="guide-index">${String(i + 1).padStart(2, '0')}</div>
+      <div class="guide-body">
+        <div class="guide-name">${esc(c.name)}</div>
+        <div class="guide-desc">${esc(c.description || 'No details added yet.')}</div>
+      </div>
+    </div>`).join('');
+  el.innerHTML = `
+    <h2 class="guide-title">Chore guide</h2>
+    <p class="guide-sub">What each chore actually involves.</p>
+    <div class="guide-list">${items}</div>`;
 }
 
 function cardHTML(u) {
