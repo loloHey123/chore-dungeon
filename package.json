@@ -1,0 +1,25 @@
+{
+  "name": "chore-dungeon",
+  "version": "1.0.0",
+  "description": "A clean, modern chore board for a house of roommates: card-per-person UI, Signal/Twilio reminders, weekly rotation, and out-of-town redistribution.",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "seed": "node server/seed.js",
+    "signal:receive": "signal-cli -a \"$SIGNAL_NUMBER\" receive"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "node-cron": "^3.0.3"
+  },
+  "optionalDependencies": {
+    "twilio": "^5.3.0"
+  }
+}

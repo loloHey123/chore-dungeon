@@ -1,0 +1,7 @@
+node_modules/
+.env
+chore-dungeon.db
+chore-dungeon.db-shm
+chore-dungeon.db-wal
+*.log
+.DS_Store
