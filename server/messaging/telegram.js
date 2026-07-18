@@ -93,8 +93,6 @@ function isAddressed(msg) {
   if (BOT_ID && msg.reply_to_message?.from?.id === BOT_ID) return true;
   // Also respond when addressed by name, e.g. "choremaster whip me".
   if (/\bchoremaster\b/i.test(text)) return true;
-  // Always accept a link attempt so onboarding is painless, e.g. "iam Bill".
-  if (/^\s*i\s?am\s+\S+/i.test(text)) return true;
   return false;
 }
 
