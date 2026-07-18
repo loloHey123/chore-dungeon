@@ -146,7 +146,7 @@ window.scrollToChore = (choreId) => {
   const el = document.getElementById('guide-' + choreId);
   if (!el) return;
   const y = el.getBoundingClientRect().top + window.scrollY - window.innerHeight / 2 + el.offsetHeight / 2;
-  window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  window.scrollTo(0, Math.max(0, y)); // instant — reliable across all mobile browsers
   el.classList.add('guide-flash');
   setTimeout(() => el.classList.remove('guide-flash'), 1400);
 };

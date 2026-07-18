@@ -177,5 +177,6 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
   .avatar { width: 72px; height: 72px; font-size: 25px; }
   .guide-list { grid-template-columns: 1fr; }
   .chore-help { display: inline-block; }
+  .tooltip { display: none !important; } /* mobile uses the "?" + guide instead */
 }
 .guide-item { scroll-margin-top: 20px; }
