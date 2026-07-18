@@ -68,6 +68,23 @@ export function init({ onInbound }) {
 // In a group, only act when clearly addressed: a /command, an @mention of the
 // bot, or a reply to one of the bot's messages. In a private DM, act on
 // everything. This lets roommates chat freely without Choremaster butting in.
+// Link a sender to a roommate whose name matches their Telegram first name or
+// username — silently, no reply. Runs on every message so an unlinked roommate
+// gets wired in the moment they type anything.
+function silentAutoLink(from) {
+  if (!from) return;
+  if (db.prepare('SELECT 1 FROM users WHERE telegram_id = ?').get(String(from.id))) return;
+  const candidates = db.prepare('SELECT id, name FROM users WHERE telegram_id IS NULL').all();
+  const match = candidates.find((u) => {
+    const n = u.name.toLowerCase();
+    return n === (from.first_name || '').toLowerCase() || n === (from.username || '').toLowerCase();
+  });
+  if (match) {
+    db.prepare('UPDATE users SET telegram_id = ? WHERE id = ?').run(String(from.id), match.id);
+    logEvent('system', `${match.name} auto-linked their Telegram.`, match.id);
+  }
+}
+
 function isAddressed(msg) {
   if (msg.chat.type === 'private') return true;
   const text = msg.text || '';
@@ -101,6 +118,10 @@ async function poll(onInbound) {
           logEvent('system', `Linked Telegram group: ${chat.title || chat.id}.`);
         }
       }
+
+      // Silently link a roommate the first time they say ANYTHING, if their
+      // Telegram name matches their roommate name (no /iam needed).
+      silentAutoLink(msg.from);
 
       // Ignore ordinary chatter — only respond when addressed.
       if (!isAddressed(msg)) continue;
