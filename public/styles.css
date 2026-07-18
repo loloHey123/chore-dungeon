@@ -83,6 +83,15 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
 .chore-wrap { position: relative; }
 .chore { font-size: 18px; font-weight: 650; color: var(--ink); max-width: 100%; line-height: 1.3; letter-spacing: -.01em; cursor: default; text-align: center; }
 .chore.multi { color: var(--ink); }
+/* "?" help button — shown only on mobile (desktop has the hover tooltip). */
+.chore-help {
+  display: none; margin-left: 6px; vertical-align: middle; width: 22px; height: 22px; padding: 0;
+  border-radius: 50%; border: 1.5px solid var(--line-strong); background: #fff; color: var(--muted);
+  font-size: 13px; font-weight: 700; line-height: 1; cursor: pointer;
+}
+.chore-help:active { background: #eef0f3; }
+.guide-flash { animation: guideFlash 1.4s ease; }
+@keyframes guideFlash { 0%, 100% { background: var(--card); } 25% { background: #eef2ff; } }
 .out-badge { display: inline-block; font-size: 13px; font-weight: 650; letter-spacing: .08em; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 5px 14px; }
 .tooltip {
   position: absolute; bottom: calc(100% + 10px); left: 50%; transform: translateX(-50%) translateY(4px);
@@ -167,4 +176,6 @@ input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px 
   .card-left { width: 96px; }
   .avatar { width: 72px; height: 72px; font-size: 25px; }
   .guide-list { grid-template-columns: 1fr; }
+  .chore-help { display: inline-block; }
 }
+.guide-item { scroll-margin-top: 20px; }

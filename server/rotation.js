@@ -51,7 +51,7 @@ export function buildProposal(week) {
 export function proposalFor(week) {
   return db
     .prepare(
-      `SELECT a.*, u.name AS user_name, c.name AS chore_name, c.icon, c.difficulty
+      `SELECT a.*, u.name AS user_name, c.name AS chore_name, c.icon, c.difficulty, c.description
          FROM assignments a
          JOIN users u ON u.id = a.user_id
          JOIN chores c ON c.id = a.chore_id

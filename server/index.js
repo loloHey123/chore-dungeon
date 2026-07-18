@@ -58,7 +58,7 @@ app.get('/api/state', gate, (_req, res) => {
       id: u.id, name: u.name, avatar: u.avatar_class,
       away: away.includes(u.id), planAway: planAway.includes(u.id),
       done: week.filter((r) => r.status === 'done').length, total: week.length,
-      chores: week.map((r) => ({ id: r.id, name: r.chore_name, description: r.description, icon: r.icon, status: r.status })),
+      chores: week.map((r) => ({ id: r.id, choreId: r.chore_id, name: r.chore_name, description: r.description, icon: r.icon, status: r.status })),
     };
   });
 

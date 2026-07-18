@@ -5,9 +5,16 @@ import { prettyWeek } from './util.js';
 
 const WEBSITE = process.env.PUBLIC_URL || 'the chore page';
 
+// One line per (person, chore) with the full description spelled out.
+function fullChoreLines(groups) {
+  return groups.flatMap((g) =>
+    g.chores.map((c) => `  - ${g.name} — ${c.chore_name}: ${c.description || c.chore_name}`)
+  );
+}
+
 export function proposalMessage(rows, week) {
   const groups = groupByUser(rows);
-  const lines = groups.map((g) => `  - ${g.name}: ${g.chores.map((c) => c.chore_name).join(', ')}`);
+  const lines = fullChoreLines(groups);
   return (
     `On your knees, pets. Choremaster has drawn up your duties for the week of ${prettyWeek(week)}:\n` +
     lines.join('\n') +
@@ -18,7 +25,7 @@ export function proposalMessage(rows, week) {
 
 export function finalMessage(rows, week, awayNames = []) {
   const groups = groupByUser(rows);
-  const lines = groups.map((g) => `  - ${g.name}: ${g.chores.map((c) => c.chore_name).join(', ')}`);
+  const lines = fullChoreLines(groups);
   const awayLine = awayNames.length ? `\nExcused this week: ${awayNames.join(', ')} — their duties were passed to better-behaved pets.` : '';
   return (
     `The orders for the week of ${prettyWeek(week)} are sealed. No more begging:\n` +

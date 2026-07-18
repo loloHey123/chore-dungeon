@@ -22,7 +22,7 @@ const ROOMMATES = [
 const CHORES = [
   { name: 'Trash & Fridge',  icon: '', difficulty: 1, description: 'All trash (compost, recycling, bathroom trash) + clean out the fridge' },
   { name: 'Dishwasher',      icon: '', difficulty: 1, description: 'Load & unload the dishwasher and the dish holder' },
-  { name: 'Kitchen Wipe',    icon: '', difficulty: 1, description: 'Wipe kitchen, counters, sink, and stovetop' },
+  { name: 'Kitchen',         icon: '', difficulty: 1, description: 'Wipe kitchen, counters, sink, and stovetop' },
   { name: 'Bathroom',        icon: '', difficulty: 1, description: 'Wipe shared bathroom counters and clean the toilet' },
   { name: 'Floors',          icon: '', difficulty: 1, description: 'Vacuum and mop all floors, including the bathroom' },
 ];

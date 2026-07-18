@@ -88,7 +88,7 @@ function renderChoreGuide() {
   const el = $('#choreGuide');
   if (!STATE.chores.length) { el.innerHTML = ''; return; }
   const items = STATE.chores.map((c, i) => `
-    <div class="guide-item">
+    <div class="guide-item" id="guide-${c.id}">
       <div class="guide-index">${String(i + 1).padStart(2, '0')}</div>
       <div class="guide-body">
         <div class="guide-name">${esc(c.name)}</div>
@@ -109,10 +109,14 @@ function cardHTML(u) {
     ? `<div class="tooltip">${u.chores.map((c) => `<div class="row"><b>${esc(c.name)}</b>${c.description ? `<div class="desc">${esc(c.description)}</div>` : ''}</div>`).join('')}</div>`
     : '';
 
+  const guideId = u.chores[0]?.choreId;
+  const helpBtn = guideId
+    ? `<button class="chore-help" onclick="scrollToChore(${guideId})" aria-label="What does this chore involve?">?</button>`
+    : '';
   const choreBlock = u.away
     ? `<span class="out-badge">OUT</span>`
     : u.chores.length
-      ? `<div class="chore ${u.chores.length > 1 ? 'multi' : ''}">${esc(names)}</div>${tooltip}`
+      ? `<div class="chore ${u.chores.length > 1 ? 'multi' : ''}">${esc(names)}${helpBtn}</div>${tooltip}`
       : `<div class="chore">No chore this week</div>`;
 
   const checkbox = u.away || u.total === 0
@@ -136,6 +140,16 @@ function cardHTML(u) {
     </div>
   </div>`;
 }
+
+// Jump to the chore's explanation in the guide (used by the mobile "?" button).
+window.scrollToChore = (choreId) => {
+  const el = document.getElementById('guide-' + choreId);
+  if (!el) return;
+  const y = el.getBoundingClientRect().top + window.scrollY - window.innerHeight / 2 + el.offsetHeight / 2;
+  window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' });
+  el.classList.add('guide-flash');
+  setTimeout(() => el.classList.remove('guide-flash'), 1400);
+};
 
 // ── Actions ────────────────────────────────────────────────────
 window.togglePerson = async (userId) => {
