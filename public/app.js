@@ -76,10 +76,8 @@ async function refresh() {
 function render() {
   if (!STATE) return;
   $('#weekLabel').textContent = 'Week of ' + STATE.liveWeek.label;
-  $('#channelBadge').textContent = STATE.channel;
   renderCards();
   renderChoreGuide();
-  if (!$('#drawer').classList.contains('hidden')) renderDrawer();
 }
 
 function renderCards() {
@@ -164,73 +162,6 @@ window.toggleAway = async (userId, away) => {
   toast(away ? 'Marked away — chore reassigned' : 'Welcome back');
   refresh();
 };
-
-// ── Settings drawer ────────────────────────────────────────────
-$('#settingsBtn').addEventListener('click', openDrawer);
-$('#drawerScrim').addEventListener('click', closeDrawer);
-function openDrawer() { $('#drawer').classList.remove('hidden'); $('#drawerScrim').classList.remove('hidden'); renderDrawer(); }
-function closeDrawer() { $('#drawer').classList.add('hidden'); $('#drawerScrim').classList.add('hidden'); }
-
-function renderDrawer() {
-  const users = STATE.users.map((u) => `
-    <div class="list-item">
-      <label class="li-photo" title="Set photo">
-        ${avatarHTML(u, 'li-av')}
-        <span class="li-photo-edit">Edit</span>
-        <input type="file" accept="image/*" onchange="uploadAvatar(${u.id}, this)" />
-      </label>
-      <div class="li-main">${esc(u.name)}<div class="li-sub">${u.phone ? esc(u.phone) : 'no number'}</div></div>
-      <button class="x" onclick="delUser(${u.id})" title="Remove">✕</button>
-    </div>`).join('');
-  const chores = STATE.chores.map((c) => `
-    <div class="list-item">
-      <span class="li-av" style="background:#eef0f3;color:#374151">${c.icon || '•'}</span>
-      <div class="li-main">${esc(c.name)}<div class="li-sub">${esc(c.description || '')}</div></div>
-      <button class="x" onclick="delChore(${c.id})" title="Remove">✕</button>
-    </div>`).join('');
-  const feed = STATE.events.slice(0, 15).map((e) => `<div class="f">${esc(e.message)}<div class="ts">${esc(e.ts)}</div></div>`).join('');
-
-  $('#drawer').innerHTML = `
-    <button class="icon-btn close" onclick="closeDrawer()">✕</button>
-    <h2>Settings</h2>
-    <p class="hint">Manage roommates, chores, and messaging.</p>
-
-    <h3>Roommates</h3>
-    ${users}
-    <div class="addrow"><input id="nuName" placeholder="Name" /><input id="nuPhone" placeholder="+1 phone (Signal)" /></div>
-    <div class="addrow"><input id="nuAvatar" placeholder="Photo URL (optional)" /><button class="btn btn-sm" onclick="addUser()">Add</button></div>
-
-    <h3>Chores</h3>
-    ${chores}
-    <div class="addrow"><input id="ncName" placeholder="Chore name" /></div>
-    <div class="addrow"><input id="ncDesc" placeholder="Full details (shown on hover)" /><button class="btn btn-sm" onclick="addChore()">Add</button></div>
-
-    <h3>Send now (testing)</h3>
-    <p class="hint">These normally send on a schedule. Trigger one to preview it.</p>
-    <div class="jobs">
-      <button class="btn btn-sm" onclick="runJob('proposal')">Proposal (Sun)</button>
-      <button class="btn btn-sm" onclick="runJob('final')">Final list (Mon)</button>
-      <button class="btn btn-sm" onclick="runJob('reminders')">Reminders (Sat)</button>
-    </div>
-
-    <h3>Activity</h3>
-    <div class="feed">${feed || '<div class="f">Nothing yet.</div>'}</div>`;
-}
-window.closeDrawer = closeDrawer;
-
-window.addUser = async () => {
-  const name = $('#nuName').value.trim(); if (!name) return;
-  await api('/api/users', { method: 'POST', body: JSON.stringify({ name, phone: $('#nuPhone').value.trim(), avatar: $('#nuAvatar').value.trim() || undefined }) });
-  refresh();
-};
-window.delUser = async (id) => { if (confirm('Remove this roommate?')) { await api('/api/users/' + id, { method: 'DELETE' }); refresh(); } };
-window.addChore = async () => {
-  const name = $('#ncName').value.trim(); if (!name) return;
-  await api('/api/chores', { method: 'POST', body: JSON.stringify({ name, description: $('#ncDesc').value.trim() }) });
-  refresh();
-};
-window.delChore = async (id) => { if (confirm('Remove this chore?')) { await api('/api/chores/' + id, { method: 'DELETE' }); refresh(); } };
-window.runJob = async (job) => { await api('/api/admin/run/' + job, { method: 'POST' }); toast('Sent'); refresh(); };
 
 // ── Toast ──────────────────────────────────────────────────────
 let toastTimer;

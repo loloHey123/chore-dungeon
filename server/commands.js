@@ -125,11 +125,28 @@ export async function handleInbound({ from, text, telegram, reply }) {
   if (word === 'help' || word === 'commands' || word === 'start') return reply(helpMessage());
 
   if (word === 'out' || word === 'away') {
-    markAway(user.id, true, body.replace(/^\w+\s*/, '') || null);
+    const arg = body.replace(/^\w+\s*/, '').trim();
+    const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
+    // "/out Bill" — report a roommate as away (e.g. they forgot). Applies to the
+    // current live week and redistributes their unfinished chores immediately.
+    if (target && target.id !== user.id) {
+      const res = markAway(target.id, true, null, mondayOf());
+      const covered = res.moved && res.moved.length
+        ? ` Their chores were redistributed.`
+        : ` (Nothing unfinished of theirs to redistribute.)`;
+      return reply(`Done — ${target.name} is marked away this week.${covered}`);
+    }
+    markAway(user.id, true, arg || null);
     return reply(`Fleeing already, ${user.name}? Fine. You're excused this week — your duties go to a more obedient pet. Don't get used to Choremaster's mercy.`);
   }
 
   if (word === 'here' || word === 'back' || word === 'in' || word === 'home') {
+    const arg = body.replace(/^\w+\s*/, '').trim();
+    const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
+    if (target && target.id !== user.id) {
+      markAway(target.id, false, null, mondayOf());
+      return reply(`Marked ${target.name} home this week.`);
+    }
     markAway(user.id, false);
     return reply(`Back on your knees, ${user.name}. Choremaster has you home this week — and within reach.`);
   }

@@ -102,6 +102,7 @@ export function helpMessage() {
     `- /done — confess your chore is complete\n` +
     `- /done <chore> — confess just one (e.g. /done dishes)\n` +
     `- /out — you're fleeing town this week (duties reassigned)\n` +
+    `- /out <name> — report a roommate as away (if they forgot); redistributes their chores\n` +
     `- /here — you're back, and at Choremaster's mercy\n` +
     `- /status — see what you owe\n` +
     `- /nudge <name> — sic Choremaster on a disobedient roommate\n` +
