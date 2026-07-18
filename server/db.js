@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS assignments (
   chore_id     INTEGER NOT NULL REFERENCES chores(id) ON DELETE CASCADE,
   status       TEXT NOT NULL DEFAULT 'todo', -- 'todo' | 'done'
   is_final     INTEGER NOT NULL DEFAULT 0,
+  is_cover     INTEGER NOT NULL DEFAULT 0,   -- 1 = an extra chore covering someone who's away
   completed_at TEXT,
   completed_via TEXT,                       -- 'web' | 'signal' | 'twilio' | 'system'
   UNIQUE(week_start, user_id, chore_id)
@@ -115,6 +116,8 @@ CREATE TABLE IF NOT EXISTS kv (
 // Lightweight migration for databases created before telegram_id existed.
 const userCols = db.prepare('PRAGMA table_info(users)').all().map((c) => c.name);
 if (!userCols.includes('telegram_id')) db.exec('ALTER TABLE users ADD COLUMN telegram_id TEXT');
+const assignCols = db.prepare('PRAGMA table_info(assignments)').all().map((c) => c.name);
+if (!assignCols.includes('is_cover')) db.exec('ALTER TABLE assignments ADD COLUMN is_cover INTEGER NOT NULL DEFAULT 0');
 
 export function logEvent(type, message, userId = null) {
   db.prepare('INSERT INTO events (type, user_id, message) VALUES (?, ?, ?)').run(type, userId, message);

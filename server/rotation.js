@@ -87,28 +87,48 @@ export function finalize(week) {
     )
     .all(week, ...away);
 
-  // Current load per home user, so we hand extra chores to the least busy.
+  // Fairness: spread covers by lifetime burden first, then this-week load.
+  const burden = coverBurden(homeUsers);
   const load = new Map(homeUsers.map((u) => [u.id, 0]));
   for (const u of homeUsers) {
-    load.set(
-      u.id,
-      db.prepare('SELECT COUNT(*) AS n FROM assignments WHERE week_start = ? AND user_id = ?').get(week, u.id).n
-    );
+    load.set(u.id, db.prepare('SELECT COUNT(*) AS n FROM assignments WHERE week_start = ? AND user_id = ?').get(week, u.id).n);
   }
 
   const reassign = db.prepare(
-    'UPDATE assignments SET user_id = ?, status = \'todo\', completed_at = NULL, completed_via = NULL WHERE id = ?'
+    "UPDATE assignments SET user_id = ?, status = 'todo', completed_at = NULL, completed_via = NULL, is_cover = 1 WHERE id = ?"
   );
   tx(() => {
     for (const orphan of orphaned) {
-      // pick home user with the smallest current load
-      let best = homeUsers[0].id;
-      for (const [uid, n] of load) if (n < load.get(best)) best = uid;
+      const best = pickCoverer(homeUsers, burden, load);
       reassign.run(best, orphan.id);
+      burden.set(best, burden.get(best) + 1);
       load.set(best, load.get(best) + 1);
     }
   });
   return finalFor(week);
+}
+
+// Historical "cover" burden per user: how many extra chores each has covered
+// for absent roommates over ALL time. This is what keeps things fair long-term.
+function coverBurden(homeUsers) {
+  const burden = new Map(homeUsers.map((u) => [u.id, 0]));
+  for (const r of db.prepare('SELECT user_id, COUNT(*) AS n FROM assignments WHERE is_cover = 1 GROUP BY user_id').all()) {
+    if (burden.has(r.user_id)) burden.set(r.user_id, r.n);
+  }
+  return burden;
+}
+
+// Pick who covers the next orphaned chore: fewest lifetime covers wins, then
+// fewest chores already assigned this week, then lowest id. Both maps are
+// mutated by the caller after each pick so the burden spreads within a pass.
+function pickCoverer(homeUsers, burden, load) {
+  let best = homeUsers[0].id;
+  for (const u of homeUsers) {
+    const bu = burden.get(u.id), bb = burden.get(best);
+    if (bu < bb || (bu === bb && load.get(u.id) < load.get(best)) ||
+        (bu === bb && load.get(u.id) === load.get(best) && u.id < best)) best = u.id;
+  }
+  return best;
 }
 
 export function finalFor(week) {
@@ -137,19 +157,20 @@ export function redistributeUser(week, userId) {
     .prepare("SELECT id, chore_id FROM assignments WHERE week_start=? AND user_id=? AND status='todo'")
     .all(week, userId);
 
+  const burden = coverBurden(homeUsers);
   const load = new Map(
     homeUsers.map((u) => [
       u.id,
       db.prepare('SELECT COUNT(*) AS n FROM assignments WHERE week_start=? AND user_id=?').get(week, u.id).n,
     ])
   );
-  const reassign = db.prepare('UPDATE assignments SET user_id=? WHERE id=?');
+  const reassign = db.prepare('UPDATE assignments SET user_id=?, is_cover=1 WHERE id=?');
   const moved = [];
   tx(() => {
     for (const t of todos) {
-      let best = homeUsers[0].id;
-      for (const [uid, n] of load) if (n < load.get(best)) best = uid;
+      const best = pickCoverer(homeUsers, burden, load);
       reassign.run(best, t.id);
+      burden.set(best, burden.get(best) + 1);
       load.set(best, load.get(best) + 1);
       const info = db
         .prepare(
