@@ -45,6 +45,14 @@ export function shiftIso(isoDate, days) {
   return iso(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
 }
 
+// Current hour of day (0-23) in the configured timezone.
+export function hourInTZ(date = new Date()) {
+  return Number(
+    new Intl.DateTimeFormat('en-US', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' })
+      .formatToParts(date).find((p) => p.type === 'hour').value
+  );
+}
+
 export function todayIso() {
   const { y, m, d } = ymdInTZ();
   return iso(y, m, d);

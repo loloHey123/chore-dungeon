@@ -12,13 +12,12 @@ function fullChoreLines(groups) {
   );
 }
 
-export function proposalMessage(rows, week) {
-  const groups = groupByUser(rows);
-  const lines = fullChoreLines(groups);
+// Sunday: don't reveal assignments — just take attendance for the coming week.
+export function availabilityAsk(week) {
   return (
-    `On your knees, pets. Choremaster has drawn up your duties for the week of ${prettyWeek(week)}:\n` +
-    lines.join('\n') +
-    `\n\nThink you can slip away this week? Whimper "/out" before Monday and Choremaster will hand your duties to someone more obedient. Otherwise these are yours — no safe words.\n` +
+    `Roll call, pets. Choremaster is drawing up duties for the week of ${prettyWeek(week)}.\n` +
+    `Will you be home, or do you plan to flee? Whimper "/out" now if you'll be away and Choremaster will spare you — this once. ` +
+    `Everyone else: your orders arrive Monday morning. No safe words.\n` +
     `${WEBSITE}`
   );
 }

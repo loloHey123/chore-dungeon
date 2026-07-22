@@ -8,10 +8,10 @@
 // testing from the website's "admin" panel).
 import cron from 'node-cron';
 import { db, logEvent } from './db.js';
-import { mondayOf, nextMonday, shiftIso, prettyWeek } from './util.js';
+import { mondayOf, nextMonday, shiftIso, prettyWeek, todayIso, hourInTZ } from './util.js';
 import { buildProposal, finalize, awayUserIds, userWeek, activeUsers } from './rotation.js';
 import { announce, dm } from './messaging/index.js';
-import { proposalMessage, finalMessage, weekendReminder, recapMessage } from './messages.js';
+import { availabilityAsk, finalMessage, weekendReminder, recapMessage } from './messages.js';
 
 const TZ = process.env.TZ || 'America/Los_Angeles';
 
@@ -32,7 +32,9 @@ export function weekRecap(week) {
   return { finishers, naughty, away };
 }
 
-// Sunday: report card on last week, then propose next week's chores.
+// Sunday: report card on last week, then ask who'll be around next week.
+// The rotation itself is built silently (so /out replies target next week and
+// Monday has something to finalize) but assignments aren't revealed until Monday.
 export function runSundayProposal() {
   const ending = mondayOf();          // the week Sunday closes out
   const recap = weekRecap(ending);
@@ -44,8 +46,8 @@ export function runSundayProposal() {
   const week = nextMonday();          // the week we're planning
   const rows = buildProposal(week);
   if (!rows.length) { logEvent('system', 'Proposal skipped — add roommates and chores first.'); return; }
-  announce(proposalMessage(rows, week));
-  logEvent('rotation', `Posted the proposed rotation for the week of ${week}.`);
+  announce(availabilityAsk(week));
+  logEvent('rotation', `Asked who's home for the week of ${week} (rotation drafted silently).`);
   return rows;
 }
 
@@ -76,6 +78,23 @@ export function runWeekendReminders() {
   return count;
 }
 
+// Boot-time recovery: if the machine was down when Monday 8am came and went,
+// the week never got finalized (and away roommates' chores never got
+// redistributed). Detect that on startup and run the missed finalize now.
+export function catchUpIfMissed() {
+  const week = mondayOf();
+  const hasFinal = db
+    .prepare('SELECT COUNT(*) AS n FROM assignments WHERE week_start = ? AND is_final = 1')
+    .get(week).n > 0;
+  if (hasFinal) return false;
+  // Only once we're actually past Monday 8am in TZ — never finalize early.
+  const pastMonday8 = todayIso() > week || (todayIso() === week && hourInTZ() >= 8);
+  if (!pastMonday8) return false;
+  logEvent('system', `Missed the Monday finalize for the week of ${week} (server was down) — running it now.`);
+  runMondayFinal();
+  return true;
+}
+
 export function startScheduler() {
   const opts = { timezone: TZ };
   cron.schedule('0 8 * * 0', runSundayProposal, opts);   // Sun 8:00am
@@ -83,4 +102,5 @@ export function startScheduler() {
   cron.schedule('0 8 * * 6', runWeekendReminders, opts); // Sat 8:00am
   logEvent('system', `Scheduler armed (TZ=${TZ}): Sun 8a proposal, Mon 8a final, Sat 8a reminders.`);
   console.log(`[scheduler] jobs armed in ${TZ}`);
+  catchUpIfMissed();
 }
