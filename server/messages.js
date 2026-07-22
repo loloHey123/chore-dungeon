@@ -15,28 +15,26 @@ function fullChoreLines(groups) {
 // Sunday: don't reveal assignments — just take attendance for the coming week.
 export function availabilityAsk(week) {
   return (
-    `Roll call, pets. Choremaster is drawing up duties for the week of ${prettyWeek(week)}.\n` +
-    `Will you be home, or do you plan to flee? Whimper "/out" now if you'll be away and Choremaster will spare you — this once. ` +
-    `Everyone else: your orders arrive Monday morning. No safe words.\n` +
-    `${WEBSITE}`
+    `Roll call, pets. Away for the week of ${prettyWeek(week)}? "/out" now. ` +
+    `Orders arrive Monday.\n${WEBSITE}`
   );
 }
 
 export function finalMessage(rows, week, awayNames = []) {
   const groups = groupByUser(rows);
   const lines = fullChoreLines(groups);
-  const awayLine = awayNames.length ? `\nExcused this week: ${awayNames.join(', ')} — their duties were passed to better-behaved pets.` : '';
+  const awayLine = awayNames.length ? `\nExcused: ${awayNames.join(', ')}.` : '';
   return (
-    `The orders for the week of ${prettyWeek(week)} are sealed. No more begging:\n` +
+    `Orders for the week of ${prettyWeek(week)}:\n` +
     lines.join('\n') +
     awayLine +
-    `\n\nMark them done at ${WEBSITE}, or crawl back and whimper "/done" when you're finished. Choremaster is watching.`
+    `\n\n"/done" when finished. Choremaster is watching.\n${WEBSITE}`
   );
 }
 
 export function weekendReminder(name, chores) {
   const list = chores.map((c) => c.chore_name).join(', ');
-  return `${name}, you filthy little procrastinator — ${list} is STILL undone and the week is nearly spent. Choremaster's patience is fraying. Finish it before Sunday, or you're going on the report card. Whimper "/done" when you obey.`;
+  return `${name} — ${list} still undone. Finish by Sunday or go on the report card. "/done" when you obey.`;
 }
 
 // A nudge is a public whipping from Choremaster (not from a roommate) — keeps
@@ -93,25 +91,23 @@ export function recapMessage(weekLabel, finishers, naughty, away) {
   if (finishers.length) lines.push(`Obedient: ${finishers.join(', ')}`);
   if (naughty.length) lines.push(`Naughty list: ${naughty.map((x) => `${x.name} (${x.left} undone)`).join(', ')}`);
   if (away.length) lines.push(`Excused, away: ${away.join(', ')}`);
-  if (finishers.length && !naughty.length) lines.push(`The whole house obeyed. Choremaster is almost disappointed — no one to punish.`);
-  if (!finishers.length && naughty.length) lines.push(`Shameful. Not one of you finished. Choremaster is cracking its knuckles.`);
+  if (finishers.length && !naughty.length) lines.push(`Everyone obeyed. No one to punish. Almost disappointing.`);
+  if (!finishers.length && naughty.length) lines.push(`Not one of you finished. Shameful.`);
   return lines.join('\n');
 }
 
 export function bossDefeatedMessage(week) {
-  return `Every last duty, done. The whole house obeyed for the week of ${prettyWeek(week)}. Choremaster is impressed — and a little disappointed there's no one left to discipline. Don't let it go to your heads, pets.`;
+  return `Every duty done for the week of ${prettyWeek(week)}. The whole house obeyed. Don't let it go to your heads, pets.`;
 }
 
 export function helpMessage() {
   return (
-    `Choremaster answers to these. In the group use the /command (or @mention it); in a DM the plain word works too:\n` +
-    `- /done — confess your chore is complete\n` +
-    `- /done <chore> — confess just one (e.g. /done dishes)\n` +
-    `- /out — you're fleeing town this week (duties reassigned)\n` +
-    `- /out <name> — report a roommate as away (if they forgot); redistributes their chores\n` +
-    `- /here — you're back, and at Choremaster's mercy\n` +
-    `- /status — see what you owe\n` +
-    `- /nudge <name> — sic Choremaster on a disobedient roommate\n` +
-    `- /iam <name> — submit yourself so Choremaster knows who you are`
+    `Commands:\n` +
+    `- /done [chore] — mark done (all, or one: /done dishes)\n` +
+    `- /out [name] — away this week (yours or a roommate's); chores reassigned\n` +
+    `- /here — you're back\n` +
+    `- /status — what you owe\n` +
+    `- /nudge <name> — public whipping\n` +
+    `- /iam <name> — link yourself`
   );
 }

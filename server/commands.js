@@ -101,10 +101,10 @@ export async function handleInbound({ from, text, telegram, reply }) {
     if (isLink) {
       const nameArg = body.replace(/^\s*(i\s*am|iam|link)\s*/i, '').trim();
       const target = db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(nameArg);
-      if (!target) return reply(`No pet named “${nameArg}” in Choremaster's stable. Type it exactly, e.g. "iam Laura".`);
+      if (!target) return reply(`No pet named “${nameArg}”. Type it exactly, e.g. "iam Laura".`);
       db.prepare('UPDATE users SET telegram_id=? WHERE id=?').run(String(telegram.id), target.id);
       logEvent('system', `${target.name} linked their Telegram.`, target.id);
-      return reply(`Bound. You belong to Choremaster now, ${target.name}. Use /done, /out, /status, or /nudge <name> whenever you're told.`);
+      return reply(`Bound, ${target.name}. /done, /out, /status, /nudge <name>.`);
     }
     // Auto-link if their Telegram name/username matches a roommate exactly.
     if (!user) {
@@ -118,8 +118,8 @@ export async function handleInbound({ from, text, telegram, reply }) {
 
   if (!user) {
     return reply(telegram
-      ? 'Choremaster doesn\'t know which pet you are yet. Submit yourself with "/iam <your name>" — e.g. /iam Laura.'
-      : "Choremaster doesn't recognize this number. Have your keeper add you on the chore page.");
+      ? 'Who are you, pet? "/iam <your name>" — e.g. /iam Laura.'
+      : "Unknown number. Get added on the chore page first.");
   }
 
   if (word === 'help' || word === 'commands' || word === 'start') return reply(helpMessage());
@@ -132,12 +132,12 @@ export async function handleInbound({ from, text, telegram, reply }) {
     if (target && target.id !== user.id) {
       const res = markAway(target.id, true, null, mondayOf());
       const covered = res.moved && res.moved.length
-        ? ` Their chores were redistributed.`
-        : ` (Nothing unfinished of theirs to redistribute.)`;
-      return reply(`Done — ${target.name} is marked away this week.${covered}`);
+        ? ` Chores redistributed.`
+        : ` (Nothing of theirs left to redistribute.)`;
+      return reply(`${target.name} is marked away this week.${covered}`);
     }
     markAway(user.id, true, arg || null);
-    return reply(`Fleeing already, ${user.name}? Fine. You're excused this week — your duties go to a more obedient pet. Don't get used to Choremaster's mercy.`);
+    return reply(`Fleeing, ${user.name}? You're excused this week — your duties go to a more obedient pet.`);
   }
 
   if (word === 'here' || word === 'back' || word === 'in' || word === 'home') {
@@ -148,39 +148,39 @@ export async function handleInbound({ from, text, telegram, reply }) {
       return reply(`Marked ${target.name} home this week.`);
     }
     markAway(user.id, false);
-    return reply(`Back on your knees, ${user.name}. Choremaster has you home this week — and within reach.`);
+    return reply(`Welcome back, ${user.name}. You're home this week — and within reach.`);
   }
 
   if (word === 'status' || word === 'chores') {
     const { week } = targetWeek();
     const rows = userWeek(week, user.id);
-    if (!rows.length) return reply(`No duties for you this week, ${user.name}. Choremaster will think of something.`);
+    if (!rows.length) return reply(`No duties this week, ${user.name}.`);
     const todo = rows.filter((r) => r.status === 'todo');
     const list = rows.map((r) => `${r.status === 'done' ? '[x]' : '[ ]'} ${r.chore_name}`).join('\n');
-    return reply(`${user.name}, here's what you owe Choremaster this week:\n${list}\n${todo.length ? `${todo.length} still undone — get on it, pet.` : 'All done. Choremaster is pleased.'}`);
+    return reply(`${list}\n${todo.length ? `${todo.length} undone. Get on it, pet.` : 'All done. Choremaster is pleased.'}`);
   }
 
   if (word === 'nudge') {
     const targetName = body.replace(/^\w+\s*/, '').trim();
     const target = db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(targetName);
-    if (!target) return reply(`No pet named “${targetName}” in the stable. Use their exact name.`);
+    if (!target) return reply(`No pet named “${targetName}”. Use their exact name.`);
     db.prepare('INSERT INTO nudges (from_user, to_user) VALUES (?, ?)').run(user.id, target.id);
     const info = nudgeTarget(target.id);
     announce(nudgeMessage(target.name, info.choreText, info.allDone, null));
     logEvent('nudge', `${user.name} whipped ${target.name}.`, user.id);
-    return reply(`With pleasure. Choremaster is whipping ${target.name} in front of everyone as we speak.`);
+    return reply(`With pleasure. ${target.name} is being whipped publicly as we speak.`);
   }
 
   if (word === 'done' || word === 'did' || word === 'finished' || word === 'complete') {
     const { week } = targetWeek();
     const rows = userWeek(week, user.id).filter((r) => r.status === 'todo');
-    if (!rows.length) return reply(`Nothing left to confess, ${user.name} — you've already pleased Choremaster this week.`);
+    if (!rows.length) return reply(`Nothing left to confess, ${user.name}. Already done.`);
 
     const rest = body.replace(/^\w+\s*/, '').trim().toLowerCase();
     let targets = rows;
     if (rest) targets = rows.filter((r) => r.chore_name.toLowerCase().includes(rest));
     if (rest && targets.length === 0) {
-      return reply(`Choremaster sees no “${rest}” on your list. You still owe: ${rows.map((r) => r.chore_name).join(', ')}.`);
+      return reply(`No “${rest}” on your list. You owe: ${rows.map((r) => r.chore_name).join(', ')}.`);
     }
 
     const channel = process.env.MESSAGING || 'console';
@@ -188,7 +188,7 @@ export async function handleInbound({ from, text, telegram, reply }) {
     const names = targets.map((t) => t.chore_name).join(', ');
     const left = userWeek(week, user.id).filter((r) => r.status === 'todo').length;
     if (left === 0) { announce(praiseMessage(user.name)); announceBossIfCleared(week); }
-    return reply(`Good pet, ${user.name}. Confession accepted: ${names}.${left ? ` ${left} still owed — Choremaster is waiting.` : " You're free of Choremaster… for now."}`);
+    return reply(`Good pet. Done: ${names}.${left ? ` ${left} still owed.` : ' Free… for now.'}`);
   }
 
   // Not a recognized command — let Choremaster riff back in character if an AI
@@ -196,5 +196,5 @@ export async function handleInbound({ from, text, telegram, reply }) {
   const info = nudgeTarget(user.id);
   const aiReply = await choremasterReply(user.name, body, info);
   if (aiReply) logEvent('message', `[choremaster → ${user.name}] ${aiReply}`, user.id);
-  return reply(aiReply || `Choremaster doesn't understand “${body}”. Whimper HELP to see what you may ask.`);
+  return reply(aiReply || `Choremaster doesn't understand “${body}”. Try /help.`);
 }
