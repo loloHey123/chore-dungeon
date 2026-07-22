@@ -8,6 +8,6 @@
 //  housePassword Sent automatically with every request so roommates never see a
 //                login. Must match HOUSE_PASSWORD in the server's .env.
 window.CHORE_CONFIG = {
-  apiBase: 'https://mere-levy-prospective-shine.trycloudflare.com',
+  apiBase: 'https://portland-dates-saint-heart.trycloudflare.com',
   housePassword: 'dungeonmaster',
 };
