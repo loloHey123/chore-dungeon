@@ -127,35 +127,41 @@ export async function handleInbound({ from, text, telegram, reply }) {
   // classifier, so plain-language messages ("hey can I trade with Bill") end
   // up running the exact same code as "/swap Bill". Returns true if `word`
   // matched a known command (and replied), false otherwise.
-  function runCommand(word, arg) {
+  function runCommand(word, arg, weekHint = null) {
     if (word === 'help') { reply(helpMessage()); return true; }
 
     if (word === 'out') {
       const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
-      // Report a roommate as away (e.g. they forgot). Applies to the current
-      // live week and redistributes their unfinished chores immediately.
+      // Report a roommate as away. Defaults to the current live week (e.g.
+      // "they forgot") and redistributes their unfinished chores immediately;
+      // an explicit "next week" in the message targets the upcoming week
+      // instead (only meaningful once Sunday's proposal for it exists).
+      const week = weekHint === 'next' ? nextMonday() : mondayOf();
+      const weekLabel = weekHint === 'next' ? 'next week' : 'this week';
       if (target && target.id !== user.id) {
-        const res = markAway(target.id, true, null, mondayOf());
+        const res = markAway(target.id, true, null, week);
         const covered = res.moved && res.moved.length
           ? ` Chores redistributed.`
           : ` (Nothing of theirs left to redistribute.)`;
-        reply(`${target.name} is marked away this week.${covered}`);
+        reply(`${target.name} is marked away ${weekLabel}.${covered}`);
         return true;
       }
-      markAway(user.id, true, arg || null);
-      reply(`Fleeing, ${user.name}? You're excused this week — your duties go to a more obedient pet.`);
+      markAway(user.id, true, arg || null, weekHint === 'next' ? nextMonday() : null);
+      reply(`Fleeing, ${user.name}? You're excused ${weekLabel} — your duties go to a more obedient pet.`);
       return true;
     }
 
     if (word === 'here') {
       const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
+      const week = weekHint === 'next' ? nextMonday() : mondayOf();
+      const weekLabel = weekHint === 'next' ? 'next week' : 'this week';
       if (target && target.id !== user.id) {
-        markAway(target.id, false, null, mondayOf());
-        reply(`Marked ${target.name} home this week.`);
+        markAway(target.id, false, null, week);
+        reply(`Marked ${target.name} home ${weekLabel}.`);
         return true;
       }
-      markAway(user.id, false);
-      reply(`Welcome back, ${user.name}. You're home this week — and within reach.`);
+      markAway(user.id, false, null, weekHint === 'next' ? nextMonday() : null);
+      reply(`Welcome back, ${user.name}. You're home ${weekLabel} — and within reach.`);
       return true;
     }
 
@@ -233,7 +239,12 @@ export async function handleInbound({ from, text, telegram, reply }) {
     nudge: 'nudge',
     done: 'done', did: 'done', finished: 'done', complete: 'done',
   };
-  if (ALIASES[word] && runCommand(ALIASES[word], body.replace(/^\w+\s*/, '').trim())) return;
+  if (ALIASES[word]) {
+    let rest = body.replace(/^\w+\s*/, '').trim();
+    const weekHint = /\bnext\s+week\b/i.test(rest) ? 'next' : /\b(this|current)\s+week\b/i.test(rest) ? 'current' : null;
+    rest = rest.replace(/\b(next|this|current)\s+week\b/i, '').trim();
+    if (runCommand(ALIASES[word], rest, weekHint)) return;
+  }
 
   // Plain-language fallback: ask Choremaster to classify what they meant
   // ("can I trade my chores with bill this week" → swap, target: Bill).
@@ -241,7 +252,7 @@ export async function handleInbound({ from, text, telegram, reply }) {
   const intent = await classifyIntent(body, roommateNames);
   if (intent?.command) {
     const arg = intent.command === 'done' ? (intent.chore || '') : (intent.target || '');
-    if (runCommand(intent.command, arg)) return;
+    if (runCommand(intent.command, arg, intent.week || null)) return;
   }
 
   // Still nothing recognized — let Choremaster riff back in character if an

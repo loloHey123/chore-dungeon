@@ -32,10 +32,12 @@ Valid commands: done, out, here, status, nudge, swap, help.
 - swap: they want to trade this week's chores with someone
 - help: they're asking what the bot can do
 
-Reply with ONLY compact JSON, no prose, no markdown fences:
-{"command": "<one of the above>" | null, "target": "<exact roommate name from the list, or null>", "chore": "<a short chore keyword they mentioned, or null>"}
+For "out"/"here", pay close attention to which week they mean — this matters a lot: "next week" means the upcoming week, "this week"/"currently"/no time mentioned means the current week. Never assume — only set "next" if they said something like "next week" explicitly.
 
-If the message is just chit-chat, an insult, a joke, or anything that isn't clearly asking to do one of those actions, return {"command": null, "target": null, "chore": null}. Never invent a name that isn't in the roommate list.`;
+Reply with ONLY compact JSON, no prose, no markdown fences:
+{"command": "<one of the above>" | null, "target": "<exact roommate name from the list, or null>", "chore": "<a short chore keyword they mentioned, or null>", "week": "current" | "next" | null}
+
+"week" is only relevant to "out"/"here" — set it to null for other commands or when unstated. If the message is just chit-chat, an insult, a joke, or anything that isn't clearly asking to do one of those actions, return {"command": null, "target": null, "chore": null, "week": null}. Never invent a name that isn't in the roommate list.`;
 
 export async function classifyIntent(userText, roommateNames = []) {
   const key = process.env.ANTHROPIC_API_KEY;
