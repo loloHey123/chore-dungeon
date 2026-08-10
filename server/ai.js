@@ -5,6 +5,8 @@
 //
 // Fully optional — if ANTHROPIC_API_KEY isn't set, callers should skip this and
 // use the plain "Choremaster doesn't understand" fallback instead.
+import { todayWithWeekday } from './util.js';
+
 const MODEL = process.env.CHOREMASTER_AI_MODEL || 'claude-haiku-4-5-20251001';
 
 const SYSTEM_PROMPT = `You are Choremaster, the sardonic house chore bot for a group of 5 roommates in a Telegram group chat. Your personality: a campy, over-the-top "dominatrix mistress" persona — bossy, teasing, melodramatic, calls people "pet". You are funny and spicy, NOT actually explicit. Keep it PG-13: innuendo and theatrical bossiness are fine, explicit sexual content is not.
@@ -32,12 +34,14 @@ Valid commands: done, out, here, status, nudge, swap, help.
 - swap: they want to trade this week's chores with someone
 - help: they're asking what the bot can do
 
-For "out"/"here", pay close attention to which week they mean — this matters a lot: "next week" means the upcoming week, "this week"/"currently"/no time mentioned means the current week. Never assume — only set "next" if they said something like "next week" explicitly.
+For "out"/"here", only set "week" from what's actually stated: "next week" → "next", "this week"/"currently" → "current". If no week is mentioned at all, use null — the app has its own default for that case, so never guess "current" just because nothing was said.
+
+If they mention when they'll be BACK (an end date, "until X", "through X", "back next Friday", "gone for two weeks"), resolve it to an absolute ISO date (YYYY-MM-DD) — the date they are home again — using today's date given below as your reference point for anything relative. This also applies to a message with no command at all, if it's answering a question about when someone's coming back (e.g. just "until aug 30" or "back Monday") — still fill in "until" even though "command" is null in that case. Only set "until" when a date/duration is actually stated; never guess one.
 
 Reply with ONLY compact JSON, no prose, no markdown fences:
-{"command": "<one of the above>" | null, "target": "<exact roommate name from the list, or null>", "chore": "<a short chore keyword they mentioned, or null>", "week": "current" | "next" | null}
+{"command": "<one of the above>" | null, "target": "<exact roommate name from the list, or null>", "chore": "<a short chore keyword they mentioned, or null>", "week": "current" | "next" | null, "until": "<YYYY-MM-DD, or null>"}
 
-"week" is only relevant to "out"/"here" — set it to null for other commands or when unstated. If the message is just chit-chat, an insult, a joke, or anything that isn't clearly asking to do one of those actions, return {"command": null, "target": null, "chore": null, "week": null}. Never invent a name that isn't in the roommate list.`;
+"week" is only relevant to "out"/"here" — set it to null for other commands or when unstated. If the message is just chit-chat, an insult, a joke, or anything that isn't clearly asking to do one of those actions (and isn't answering a return-date question either), return {"command": null, "target": null, "chore": null, "week": null, "until": null}. Never invent a name that isn't in the roommate list.`;
 
 export async function classifyIntent(userText, roommateNames = []) {
   const key = process.env.ANTHROPIC_API_KEY;
@@ -55,7 +59,7 @@ export async function classifyIntent(userText, roommateNames = []) {
         max_tokens: 100,
         system: INTENT_SYSTEM_PROMPT,
         messages: [
-          { role: 'user', content: `Roommates: ${roommateNames.join(', ')}\n\nMessage: "${userText}"` },
+          { role: 'user', content: `Today is ${todayWithWeekday()}.\nRoommates: ${roommateNames.join(', ')}\n\nMessage: "${userText}"` },
         ],
       }),
     });
@@ -70,7 +74,11 @@ export async function classifyIntent(userText, roommateNames = []) {
     // to — strip it rather than let a cosmetic wrapper sink a real command.
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
     const parsed = JSON.parse(text);
-    if (!parsed.command || !['done', 'out', 'here', 'status', 'nudge', 'swap', 'help'].includes(parsed.command)) return null;
+    // Don't null out the whole result for a bad/missing command — "until" can
+    // still be valid on its own (e.g. answering "when are they back?" with no
+    // command word at all).
+    if (parsed.command && !['done', 'out', 'here', 'status', 'nudge', 'swap', 'help'].includes(parsed.command)) parsed.command = null;
+    if (typeof parsed.until !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(parsed.until)) parsed.until = null;
     return parsed;
   } catch (e) {
     console.error('[ai] intent classify failed:', e.message);

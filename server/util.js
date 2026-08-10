@@ -75,3 +75,25 @@ export function prettyWeek(isoMonday) {
   const dt = new Date(Date.UTC(y, m - 1, d));
   return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
+
+// Today's date plus weekday name, for grounding an AI's relative-date parsing
+// ("next Friday", "in two weeks") in an absolute reference point.
+export function todayWithWeekday() {
+  const { y, m, d, dow } = ymdInTZ();
+  const names = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return `${names[dow]}, ${iso(y, m, d)}`;
+}
+
+// Which Monday-start weeks should be marked away, given the first away week
+// and the ISO date the person is back home. A week only counts as "home" if
+// they're back ON OR BEFORE its Monday — coming back mid-week (or later)
+// still excludes that whole week, since chores are assigned per full week.
+export function awayWeeksUntil(firstWeekMonday, returnDateIso) {
+  const weeks = [];
+  let w = firstWeekMonday;
+  while (returnDateIso > w) {
+    weeks.push(w);
+    w = shiftIso(w, 7);
+  }
+  return weeks;
+}

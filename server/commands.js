@@ -4,8 +4,8 @@
 //
 // Each inbound message carries a `reply(text)` bound to the right destination,
 // so responses go back to whoever sent it. Group broadcasts use announce().
-import { db, logEvent } from './db.js';
-import { mondayOf, nextMonday } from './util.js';
+import { db, logEvent, getKV, setKV } from './db.js';
+import { mondayOf, nextMonday, shiftIso, prettyWeek, awayWeeksUntil } from './util.js';
 import { redistributeUser, userWeek } from './rotation.js';
 
 // What chore(s) does this person owe right now? Prefers unfinished ones; if
@@ -76,6 +76,59 @@ export function markAway(userId, away, note = null, forceWeek = null) {
   return { week, isFinal, moved };
 }
 
+// When someone's reported away with no return date, we ask for one so they
+// don't have to repeat "/out" every week they're gone — and remember who we
+// asked about, so a later reply like "until Aug 30" (with no name in it) can
+// be matched back to them. Keyed per-person so more than one open question
+// doesn't clobber another; expires after a while so a stale, unrelated later
+// message doesn't get misread as answering it.
+const PENDING_RETURN_TTL_MS = 15 * 60 * 1000;
+const pendingReturnKey = (userId) => `pending_return_${userId}`;
+
+function setPendingReturn(userId, startWeek) {
+  setKV(pendingReturnKey(userId), JSON.stringify({ askedAt: Date.now(), startWeek }));
+}
+
+function clearPendingReturn(userId) {
+  setKV(pendingReturnKey(userId), '');
+}
+
+// Returns { userId, startWeek } for whoever we most recently asked "when are
+// they back?" — startWeek is the week they were already marked away from, so
+// a bare "until Aug 30" answer extends from the right point rather than
+// always assuming the current week (e.g. an away report for "next week").
+function mostRecentPendingReturn() {
+  const rows = db.prepare("SELECT k, v FROM kv WHERE k LIKE 'pending_return_%' AND v != ''").all();
+  let best = null;
+  for (const row of rows) {
+    let parsed;
+    try { parsed = JSON.parse(row.v); } catch { continue; }
+    if (!parsed?.askedAt || Date.now() - parsed.askedAt > PENDING_RETURN_TTL_MS) continue;
+    if (!best || parsed.askedAt > best.askedAt) {
+      best = { userId: Number(row.k.slice('pending_return_'.length)), startWeek: parsed.startWeek, askedAt: parsed.askedAt };
+    }
+  }
+  return best;
+}
+
+// Marks someone away for every week fully covered by [startWeek, returnDate)
+// — see awayWeeksUntil for the "no half weeks" rule — and returns a reply
+// describing the whole range in one message instead of week-by-week.
+function markAwayThrough(person, startWeek, returnDateIso, isThirdParty) {
+  const weeks = awayWeeksUntil(startWeek, returnDateIso);
+  if (!weeks.length) weeks.push(startWeek); // return date didn't actually extend past the start week
+  let redistributed = false;
+  for (const w of weeks) {
+    const res = markAway(person.id, true, null, w);
+    if (res.moved?.length) redistributed = true;
+  }
+  clearPendingReturn(person.id);
+  const subject = isThirdParty ? person.name : 'You';
+  const verb = isThirdParty ? 'is' : 'are';
+  const weekList = weeks.map(prettyWeek).join(', ');
+  return `${subject} ${verb} marked away through ${prettyWeek(shiftIso(returnDateIso, -1))} — covers the week${weeks.length > 1 ? 's' : ''} of ${weekList}.${redistributed ? ' Chores redistributed where needed.' : ''}`;
+}
+
 // Parse and act on an inbound message.
 export async function handleInbound({ from, text, telegram, reply }) {
   reply = reply || (() => {});
@@ -127,27 +180,40 @@ export async function handleInbound({ from, text, telegram, reply }) {
   // classifier, so plain-language messages ("hey can I trade with Bill") end
   // up running the exact same code as "/swap Bill". Returns true if `word`
   // matched a known command (and replied), false otherwise.
-  function runCommand(word, arg, weekHint = null) {
+  function runCommand(word, arg, weekHint = null, untilDate = null) {
     if (word === 'help') { reply(helpMessage()); return true; }
 
     if (word === 'out') {
       const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
-      // Report a roommate as away. Defaults to the current live week (e.g.
-      // "they forgot") and redistributes their unfinished chores immediately;
-      // an explicit "next week" in the message targets the upcoming week
-      // instead (only meaningful once Sunday's proposal for it exists).
-      const week = weekHint === 'next' ? nextMonday() : mondayOf();
-      const weekLabel = weekHint === 'next' ? 'next week' : 'this week';
-      if (target && target.id !== user.id) {
-        const res = markAway(target.id, true, null, week);
-        const covered = res.moved && res.moved.length
-          ? ` Chores redistributed.`
-          : ` (Nothing of theirs left to redistribute.)`;
-        reply(`${target.name} is marked away ${weekLabel}.${covered}`);
+      const isThirdParty = !!(target && target.id !== user.id);
+      const person = isThirdParty ? target : user;
+      // Defaults to the current live week (e.g. "they forgot") and
+      // redistributes their unfinished chores immediately; an explicit "next
+      // week" targets the upcoming week instead (only meaningful once
+      // Sunday's proposal for it exists).
+      if (untilDate) {
+        // A multi-week range is inherently forward-looking, not an "immediate,
+        // urgent" report — if no week was stated explicitly, prefer whichever
+        // week is actually being planned (the Sunday-drafted one, if it
+        // exists) over always defaulting to the almost-over current week.
+        const startWeek = weekHint === 'next' ? nextMonday() : weekHint === 'current' ? mondayOf() : targetWeek().week;
+        reply(markAwayThrough(person, startWeek, untilDate, isThirdParty));
         return true;
       }
-      markAway(user.id, true, arg || null, weekHint === 'next' ? nextMonday() : null);
-      reply(`Fleeing, ${user.name}? You're excused ${weekLabel} — your duties go to a more obedient pet.`);
+
+      const startWeek = weekHint === 'next' ? nextMonday() : mondayOf();
+
+      const weekLabel = weekHint === 'next' ? 'next week' : 'this week';
+      const res = markAway(person.id, true, isThirdParty ? null : (arg || null), startWeek);
+      setPendingReturn(person.id, startWeek);
+      const covered = weekHint === 'next'
+        ? ' Recorded — orders arrive Monday.'
+        : (res.moved?.length ? ' Chores redistributed.' : ' (Nothing of theirs left to redistribute.)');
+      const line = isThirdParty
+        ? `${person.name} is marked away ${weekLabel}.${covered}`
+        : `Fleeing, ${user.name}? You're excused ${weekLabel} — your duties go to a more obedient pet.`;
+      const who = isThirdParty ? person.name : 'you';
+      reply(`${line} When's ${who} back? Reply "until <date>" so I don't have to ask every week.`);
       return true;
     }
 
@@ -157,10 +223,12 @@ export async function handleInbound({ from, text, telegram, reply }) {
       const weekLabel = weekHint === 'next' ? 'next week' : 'this week';
       if (target && target.id !== user.id) {
         markAway(target.id, false, null, week);
+        clearPendingReturn(target.id);
         reply(`Marked ${target.name} home ${weekLabel}.`);
         return true;
       }
       markAway(user.id, false, null, weekHint === 'next' ? nextMonday() : null);
+      clearPendingReturn(user.id);
       reply(`Welcome back, ${user.name}. You're home ${weekLabel} — and within reach.`);
       return true;
     }
@@ -252,7 +320,21 @@ export async function handleInbound({ from, text, telegram, reply }) {
   const intent = await classifyIntent(body, roommateNames);
   if (intent?.command) {
     const arg = intent.command === 'done' ? (intent.chore || '') : (intent.target || '');
-    if (runCommand(intent.command, arg, intent.week || null)) return;
+    if (runCommand(intent.command, arg, intent.week || null, intent.until || null)) return;
+  }
+
+  // No command, but this might be answering "when's X back?" from an earlier
+  // /out with no return date — a bare "until Aug 30" or "back Monday" won't
+  // name anyone, so match it to whoever we most recently asked about.
+  if (intent?.until) {
+    const pending = mostRecentPendingReturn();
+    if (pending) {
+      const person = db.prepare('SELECT * FROM users WHERE id=?').get(pending.userId);
+      if (person) {
+        reply(markAwayThrough(person, pending.startWeek || mondayOf(), intent.until, person.id !== user.id));
+        return;
+      }
+    }
   }
 
   // Still nothing recognized — let Choremaster riff back in character if an
