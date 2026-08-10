@@ -19,8 +19,8 @@ export function nudgeTarget(userId) {
 }
 import { completeAssignment, announceBossIfCleared } from './gamification.js';
 import { announce } from './messaging/index.js';
-import { nudgeMessage, helpMessage, praiseMessage } from './messages.js';
-import { choremasterReply } from './ai.js';
+import { nudgeMessage, helpMessage, praiseMessage, swapMessage } from './messages.js';
+import { choremasterReply, classifyIntent } from './ai.js';
 
 const norm = (p) => (p || '').replace(/[^\d+]/g, '');
 
@@ -122,77 +122,130 @@ export async function handleInbound({ from, text, telegram, reply }) {
       : "Unknown number. Get added on the chore page first.");
   }
 
-  if (word === 'help' || word === 'commands' || word === 'start') return reply(helpMessage());
+  // Runs one of the fixed commands against an already-resolved word/argument
+  // pair. Shared by the literal "/word" parser below and by the AI intent
+  // classifier, so plain-language messages ("hey can I trade with Bill") end
+  // up running the exact same code as "/swap Bill". Returns true if `word`
+  // matched a known command (and replied), false otherwise.
+  function runCommand(word, arg) {
+    if (word === 'help') { reply(helpMessage()); return true; }
 
-  if (word === 'out' || word === 'away') {
-    const arg = body.replace(/^\w+\s*/, '').trim();
-    const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
-    // "/out Bill" — report a roommate as away (e.g. they forgot). Applies to the
-    // current live week and redistributes their unfinished chores immediately.
-    if (target && target.id !== user.id) {
-      const res = markAway(target.id, true, null, mondayOf());
-      const covered = res.moved && res.moved.length
-        ? ` Chores redistributed.`
-        : ` (Nothing of theirs left to redistribute.)`;
-      return reply(`${target.name} is marked away this week.${covered}`);
-    }
-    markAway(user.id, true, arg || null);
-    return reply(`Fleeing, ${user.name}? You're excused this week — your duties go to a more obedient pet.`);
-  }
-
-  if (word === 'here' || word === 'back' || word === 'in' || word === 'home') {
-    const arg = body.replace(/^\w+\s*/, '').trim();
-    const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
-    if (target && target.id !== user.id) {
-      markAway(target.id, false, null, mondayOf());
-      return reply(`Marked ${target.name} home this week.`);
-    }
-    markAway(user.id, false);
-    return reply(`Welcome back, ${user.name}. You're home this week — and within reach.`);
-  }
-
-  if (word === 'status' || word === 'chores') {
-    const { week } = targetWeek();
-    const rows = userWeek(week, user.id);
-    if (!rows.length) return reply(`No duties this week, ${user.name}.`);
-    const todo = rows.filter((r) => r.status === 'todo');
-    const list = rows.map((r) => `${r.status === 'done' ? '[x]' : '[ ]'} ${r.chore_name}`).join('\n');
-    return reply(`${list}\n${todo.length ? `${todo.length} undone. Get on it, pet.` : 'All done. Choremaster is pleased.'}`);
-  }
-
-  if (word === 'nudge') {
-    const targetName = body.replace(/^\w+\s*/, '').trim();
-    const target = db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(targetName);
-    if (!target) return reply(`No pet named “${targetName}”. Use their exact name.`);
-    db.prepare('INSERT INTO nudges (from_user, to_user) VALUES (?, ?)').run(user.id, target.id);
-    const info = nudgeTarget(target.id);
-    announce(nudgeMessage(target.name, info.choreText, info.allDone, null));
-    logEvent('nudge', `${user.name} whipped ${target.name}.`, user.id);
-    return reply(`With pleasure. ${target.name} is being whipped publicly as we speak.`);
-  }
-
-  if (word === 'done' || word === 'did' || word === 'finished' || word === 'complete') {
-    const { week } = targetWeek();
-    const rows = userWeek(week, user.id).filter((r) => r.status === 'todo');
-    if (!rows.length) return reply(`Nothing left to confess, ${user.name}. Already done.`);
-
-    const rest = body.replace(/^\w+\s*/, '').trim().toLowerCase();
-    let targets = rows;
-    if (rest) targets = rows.filter((r) => r.chore_name.toLowerCase().includes(rest));
-    if (rest && targets.length === 0) {
-      return reply(`No “${rest}” on your list. You owe: ${rows.map((r) => r.chore_name).join(', ')}.`);
+    if (word === 'out') {
+      const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
+      // Report a roommate as away (e.g. they forgot). Applies to the current
+      // live week and redistributes their unfinished chores immediately.
+      if (target && target.id !== user.id) {
+        const res = markAway(target.id, true, null, mondayOf());
+        const covered = res.moved && res.moved.length
+          ? ` Chores redistributed.`
+          : ` (Nothing of theirs left to redistribute.)`;
+        reply(`${target.name} is marked away this week.${covered}`);
+        return true;
+      }
+      markAway(user.id, true, arg || null);
+      reply(`Fleeing, ${user.name}? You're excused this week — your duties go to a more obedient pet.`);
+      return true;
     }
 
-    const channel = process.env.MESSAGING || 'console';
-    for (const r of targets) completeAssignment(r.id, channel);
-    const names = targets.map((t) => t.chore_name).join(', ');
-    const left = userWeek(week, user.id).filter((r) => r.status === 'todo').length;
-    if (left === 0) { announce(praiseMessage(user.name)); announceBossIfCleared(week); }
-    return reply(`Good pet. Done: ${names}.${left ? ` ${left} still owed.` : ' Free… for now.'}`);
+    if (word === 'here') {
+      const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
+      if (target && target.id !== user.id) {
+        markAway(target.id, false, null, mondayOf());
+        reply(`Marked ${target.name} home this week.`);
+        return true;
+      }
+      markAway(user.id, false);
+      reply(`Welcome back, ${user.name}. You're home this week — and within reach.`);
+      return true;
+    }
+
+    if (word === 'status') {
+      const { week } = targetWeek();
+      const rows = userWeek(week, user.id);
+      if (!rows.length) { reply(`No duties this week, ${user.name}.`); return true; }
+      const todo = rows.filter((r) => r.status === 'todo');
+      const list = rows.map((r) => `${r.status === 'done' ? '[x]' : '[ ]'} ${r.chore_name}`).join('\n');
+      reply(`${list}\n${todo.length ? `${todo.length} undone. Get on it, pet.` : 'All done. Choremaster is pleased.'}`);
+      return true;
+    }
+
+    if (word === 'swap') {
+      const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
+      if (!target) { reply(`Swap with who, pet? "/swap <name>".`); return true; }
+      if (target.id === user.id) { reply(`Can't swap with yourself, pet.`); return true; }
+      const { week } = targetWeek();
+      const mine = userWeek(week, user.id);
+      const theirs = userWeek(week, target.id);
+      if (!mine.length && !theirs.length) { reply(`Neither of you has duties this week.`); return true; }
+      for (const r of mine) db.prepare('UPDATE assignments SET user_id=? WHERE id=?').run(target.id, r.id);
+      for (const r of theirs) db.prepare('UPDATE assignments SET user_id=? WHERE id=?').run(user.id, r.id);
+      const mineNames = mine.map((r) => r.chore_name).join(', ') || 'nothing';
+      const theirNames = theirs.map((r) => r.chore_name).join(', ') || 'nothing';
+      announce(swapMessage(user.name, mineNames, target.name, theirNames));
+      logEvent('rotation', `${user.name} swapped chores with ${target.name}: ${mineNames} ⇄ ${theirNames}`, user.id);
+      reply(`Done. You now owe: ${theirNames}.`);
+      return true;
+    }
+
+    if (word === 'nudge') {
+      const target = arg ? db.prepare('SELECT * FROM users WHERE lower(name)=lower(?)').get(arg) : null;
+      if (!target) { reply(`No pet named “${arg}”. Use their exact name.`); return true; }
+      db.prepare('INSERT INTO nudges (from_user, to_user) VALUES (?, ?)').run(user.id, target.id);
+      const info = nudgeTarget(target.id);
+      announce(nudgeMessage(target.name, info.choreText, info.allDone, null));
+      logEvent('nudge', `${user.name} whipped ${target.name}.`, user.id);
+      reply(`With pleasure. ${target.name} is being whipped publicly as we speak.`);
+      return true;
+    }
+
+    if (word === 'done') {
+      const { week } = targetWeek();
+      const rows = userWeek(week, user.id).filter((r) => r.status === 'todo');
+      if (!rows.length) { reply(`Nothing left to confess, ${user.name}. Already done.`); return true; }
+
+      const rest = (arg || '').toLowerCase();
+      let targets = rows;
+      if (rest) targets = rows.filter((r) => r.chore_name.toLowerCase().includes(rest));
+      if (rest && targets.length === 0) {
+        reply(`No “${rest}” on your list. You owe: ${rows.map((r) => r.chore_name).join(', ')}.`);
+        return true;
+      }
+
+      const channel = process.env.MESSAGING || 'console';
+      for (const r of targets) completeAssignment(r.id, channel);
+      const names = targets.map((t) => t.chore_name).join(', ');
+      const left = userWeek(week, user.id).filter((r) => r.status === 'todo').length;
+      if (left === 0) { announce(praiseMessage(user.name)); announceBossIfCleared(week); }
+      reply(`Good pet. Done: ${names}.${left ? ` ${left} still owed.` : ' Free… for now.'}`);
+      return true;
+    }
+
+    return false;
   }
 
-  // Not a recognized command — let Choremaster riff back in character if an AI
-  // key is configured, otherwise fall back to the plain "didn't understand" line.
+  // Fast path: exact keyword match (aliases folded to the canonical word).
+  const ALIASES = {
+    help: 'help', commands: 'help', start: 'help',
+    out: 'out', away: 'out',
+    here: 'here', back: 'here', in: 'here', home: 'here',
+    status: 'status', chores: 'status',
+    swap: 'swap', trade: 'swap',
+    nudge: 'nudge',
+    done: 'done', did: 'done', finished: 'done', complete: 'done',
+  };
+  if (ALIASES[word] && runCommand(ALIASES[word], body.replace(/^\w+\s*/, '').trim())) return;
+
+  // Plain-language fallback: ask Choremaster to classify what they meant
+  // ("can I trade my chores with bill this week" → swap, target: Bill).
+  const roommateNames = db.prepare('SELECT name FROM users WHERE active=1').all().map((r) => r.name);
+  const intent = await classifyIntent(body, roommateNames);
+  if (intent?.command) {
+    const arg = intent.command === 'done' ? (intent.chore || '') : (intent.target || '');
+    if (runCommand(intent.command, arg)) return;
+  }
+
+  // Still nothing recognized — let Choremaster riff back in character if an
+  // AI key is configured, otherwise fall back to the plain "didn't understand".
   const info = nudgeTarget(user.id);
   const aiReply = await choremasterReply(user.name, body, info);
   if (aiReply) logEvent('message', `[choremaster → ${user.name}] ${aiReply}`, user.id);

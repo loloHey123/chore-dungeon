@@ -32,6 +32,10 @@ export function finalMessage(rows, week, awayNames = []) {
   );
 }
 
+export function swapMessage(nameA, choresA, nameB, choresB) {
+  return `${nameA} and ${nameB} traded chores. ${nameA} now owes ${choresB}; ${nameB} now owes ${choresA}.`;
+}
+
 export function weekendReminder(name, chores) {
   const list = chores.map((c) => c.chore_name).join(', ');
   return `${name} — ${list} still undone. Finish by Sunday or go on the report card. "/done" when you obey.`;
@@ -105,6 +109,7 @@ export function helpMessage() {
     `Commands:\n` +
     `- /done [chore] — mark done (all, or one: /done dishes)\n` +
     `- /out [name] — away this week (yours or a roommate's); chores reassigned\n` +
+    `- /swap <name> — trade this week's chores with someone\n` +
     `- /here — you're back\n` +
     `- /status — what you owe\n` +
     `- /nudge <name> — public whipping\n` +

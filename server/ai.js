@@ -17,6 +17,62 @@ Rules:
 - Don't repeat the same joke structure every time — vary your lines.
 - No emojis.`;
 
+// Maps a free-form message ("hey can I switch chores with Bill", "raaj is
+// out this week") onto one of the fixed slash commands, so people don't have
+// to know the exact syntax. Returns null (never guesses) if the API key is
+// missing, the request fails, or the message isn't actually a command.
+const INTENT_SYSTEM_PROMPT = `You translate a roommate's chat message into a chore-bot command, or decide it isn't one.
+
+Valid commands: done, out, here, status, nudge, swap, help.
+- done: they finished a chore (optionally naming which one)
+- out: they (or someone they name) will be away / can't do chores this week
+- here: they (or someone they name) are back / available again
+- status: they're asking what they owe
+- nudge: they want to publicly whip/remind someone else
+- swap: they want to trade this week's chores with someone
+- help: they're asking what the bot can do
+
+Reply with ONLY compact JSON, no prose, no markdown fences:
+{"command": "<one of the above>" | null, "target": "<exact roommate name from the list, or null>", "chore": "<a short chore keyword they mentioned, or null>"}
+
+If the message is just chit-chat, an insult, a joke, or anything that isn't clearly asking to do one of those actions, return {"command": null, "target": null, "chore": null}. Never invent a name that isn't in the roommate list.`;
+
+export async function classifyIntent(userText, roommateNames = []) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 100,
+        system: INTENT_SYSTEM_PROMPT,
+        messages: [
+          { role: 'user', content: `Roommates: ${roommateNames.join(', ')}\n\nMessage: "${userText}"` },
+        ],
+      }),
+    });
+    if (!res.ok) {
+      console.error('[ai] intent classify error:', res.status, await res.text().catch(() => ''));
+      return null;
+    }
+    const data = await res.json();
+    const text = data?.content?.find((c) => c.type === 'text')?.text?.trim();
+    if (!text) return null;
+    const parsed = JSON.parse(text);
+    if (!parsed.command || !['done', 'out', 'here', 'status', 'nudge', 'swap', 'help'].includes(parsed.command)) return null;
+    return parsed;
+  } catch (e) {
+    console.error('[ai] intent classify failed:', e.message);
+    return null;
+  }
+}
+
 export async function choremasterReply(userName, userText, context = {}) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) return null;
