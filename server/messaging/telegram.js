@@ -173,11 +173,23 @@ async function poll(onInbound) {
       // Ignore ordinary chatter — only respond when addressed.
       if (!isAddressed(msg)) continue;
 
-      onInbound({
-        from: String(msg.from.id),
-        text: msg.text,
-        telegram: { id: msg.from.id, username: msg.from.username, first_name: msg.from.first_name },
-        reply: (text) => tg('sendMessage', { chat_id: chat.id, text }).catch((e) => console.error('[telegram] reply failed:', e.message)),
+      const reply = (text) => tg('sendMessage', { chat_id: chat.id, text }).catch((e) => console.error('[telegram] reply failed:', e.message));
+      // A bug in the command handler used to fail completely silently — the
+      // sender just saw nothing back, ever, with no error anywhere but the pm2
+      // log. Catch it here so there's always at least a visible reply and an
+      // alert, whatever the underlying bug turns out to be.
+      Promise.resolve(
+        onInbound({
+          from: String(msg.from.id),
+          text: msg.text,
+          telegram: { id: msg.from.id, username: msg.from.username, first_name: msg.from.first_name },
+          reply,
+        })
+      ).catch((e) => {
+        console.error('[telegram] inbound handler crashed:', e.message);
+        logEvent('system', `Inbound handler crashed on "${msg.text}": ${e.message}`);
+        alertLaura('Inbound Telegram message handler crashed', e);
+        reply("Something broke on my end handling that — try again, or ping Laura if it keeps happening.");
       });
     }
     setKV('telegram_offset', offset);

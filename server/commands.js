@@ -237,7 +237,7 @@ export async function handleInbound({ from, text, telegram, reply }) {
 
   // Plain-language fallback: ask Choremaster to classify what they meant
   // ("can I trade my chores with bill this week" → swap, target: Bill).
-  const roommateNames = db.prepare('SELECT name FROM users WHERE active=1').all().map((r) => r.name);
+  const roommateNames = db.prepare('SELECT name FROM users').all().map((r) => r.name);
   const intent = await classifyIntent(body, roommateNames);
   if (intent?.command) {
     const arg = intent.command === 'done' ? (intent.chore || '') : (intent.target || '');

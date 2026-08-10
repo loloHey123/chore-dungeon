@@ -62,8 +62,11 @@ export async function classifyIntent(userText, roommateNames = []) {
       return null;
     }
     const data = await res.json();
-    const text = data?.content?.find((c) => c.type === 'text')?.text?.trim();
+    let text = data?.content?.find((c) => c.type === 'text')?.text?.trim();
     if (!text) return null;
+    // Haiku sometimes wraps the JSON in a ```json fence despite being told not
+    // to — strip it rather than let a cosmetic wrapper sink a real command.
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '').trim();
     const parsed = JSON.parse(text);
     if (!parsed.command || !['done', 'out', 'here', 'status', 'nudge', 'swap', 'help'].includes(parsed.command)) return null;
     return parsed;
