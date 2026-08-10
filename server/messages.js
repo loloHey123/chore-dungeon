@@ -108,7 +108,7 @@ export function helpMessage() {
   return (
     `Commands:\n` +
     `- /done [chore] — mark done (all, or one: /done dishes)\n` +
-    `- /out [name] — away this week (yours or a roommate's); chores reassigned\n` +
+    `- /out [name] [until <date>] — away this week (yours or a roommate's), or through a date; chores reassigned\n` +
     `- /swap <name> — trade this week's chores with someone\n` +
     `- /here — you're back\n` +
     `- /status — what you owe\n` +
