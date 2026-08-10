@@ -6,6 +6,7 @@
 // Incoming: long-polls getUpdates and forwards each message to onInbound, with
 //           a `reply()` bound to the same chat.
 import { db, logEvent, getKV, setKV } from '../db.js';
+import { sendIMessage } from '../alert.js';
 
 export const name = 'telegram';
 
@@ -42,6 +43,32 @@ async function tg(method, payload, attempts = 3) {
     }
   }
   throw lastErr;
+}
+
+// Something Choremaster itself needs a human to know about (a send that
+// failed even after retries, a polling outage). iMessage is the primary
+// channel because it works even when Telegram is the thing that's down; if
+// iMessage itself can't send (Messages signed out, Mac mini asleep, etc.),
+// fall back to a private Telegram DM — a different failure surface, so it
+// may well succeed even when the original send didn't (e.g. bot kicked from
+// the group but still reachable via DM). If both fail, it's at least in the
+// events log for the admin panel.
+async function alertLaura(context, err) {
+  const text = `Choremaster alert: ${context}${err ? ` — ${err.message}` : ''}`;
+  logEvent('system', text);
+  console.error(`[alert] ${text}`);
+  try {
+    await sendIMessage(text);
+  } catch (imsgErr) {
+    console.error('[alert] iMessage failed, falling back to Telegram DM:', imsgErr.message);
+    const laura = db.prepare("SELECT telegram_id FROM users WHERE lower(name) = 'laura'").get();
+    if (!laura?.telegram_id) return;
+    try {
+      await tgOnce('sendMessage', { chat_id: laura.telegram_id, text: `[iMessage unavailable] ${text}` });
+    } catch (tgErr) {
+      console.error('[alert] Telegram DM fallback also failed:', tgErr.message);
+    }
+  }
 }
 
 // The group we post to: an explicit env override, otherwise the one the bot
@@ -114,6 +141,7 @@ function isAddressed(msg) {
 }
 
 let offset = Number(getKV('telegram_offset') || 0);
+let consecutivePollFailures = 0;
 
 async function poll(onInbound) {
   let delay = POLL_MS;
@@ -122,6 +150,7 @@ async function poll(onInbound) {
     // tries again), so use tgOnce here rather than stacking tg()'s retries on
     // top of a 20s long-poll timeout.
     const updates = await tgOnce('getUpdates', { offset: offset + 1, timeout: 20, allowed_updates: ['message'] });
+    consecutivePollFailures = 0;
     for (const u of updates) {
       offset = Math.max(offset, u.update_id);
       const msg = u.message;
@@ -155,6 +184,10 @@ async function poll(onInbound) {
   } catch (e) {
     console.error('[telegram] poll error:', e.message);
     delay = 15000; // back off on errors (bad token, network) to avoid log spam
+    consecutivePollFailures++;
+    // A single blip isn't worth waking anyone up for; ~5 in a row (a bit over
+    // a minute of sustained backoff) means inbound commands are actually down.
+    if (consecutivePollFailures === 5) alertLaura('Telegram polling has been failing for over a minute', e);
   } finally {
     setTimeout(() => poll(onInbound), delay);
   }
@@ -169,6 +202,7 @@ export async function sendGroup(text) {
   } catch (e) {
     console.error('[telegram] group send failed:', e.message);
     logEvent('system', `Telegram group send failed: ${e.message}`);
+    alertLaura('Telegram group send failed', e);
   }
 }
 
@@ -189,6 +223,9 @@ export async function sendDirect(phone, text) {
     try {
       await tg('sendMessage', { chat_id: chat, text: user ? `${user.name}: ${text}` : text });
       logEvent('message', `[telegram group] ${text}`);
-    } catch (e) { console.error('[telegram] direct→group fallback failed:', e.message); }
+    } catch (e) {
+      console.error('[telegram] direct→group fallback failed:', e.message);
+      alertLaura('Telegram direct-message fallback to group also failed', e);
+    }
   }
 }
