@@ -16,7 +16,7 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const POLL_MS = (Number(process.env.TELEGRAM_POLL_SECONDS) || 0.3) * 1000;
 const url = (method) => `https://api.telegram.org/bot${TOKEN}/${method}`;
 
-async function tg(method, payload) {
+async function tgOnce(method, payload) {
   const res = await fetch(url(method), {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -25,6 +25,23 @@ async function tg(method, payload) {
   const data = await res.json();
   if (!data.ok) throw new Error(data.description || `telegram ${method} failed`);
   return data.result;
+}
+
+// Telegram (or the network between us) blips occasionally — e.g. a bare
+// "Bad Gateway" with no JSON body — and a single failed attempt used to just
+// drop the message. Retry outbound sends a couple times with backoff before
+// giving up; polling (which self-schedules its own retry loop) stays on tgOnce.
+async function tg(method, payload, attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await tgOnce(method, payload);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 500 * 2 ** i));
+    }
+  }
+  throw lastErr;
 }
 
 // The group we post to: an explicit env override, otherwise the one the bot
@@ -101,7 +118,10 @@ let offset = Number(getKV('telegram_offset') || 0);
 async function poll(onInbound) {
   let delay = POLL_MS;
   try {
-    const updates = await tg('getUpdates', { offset: offset + 1, timeout: 20, allowed_updates: ['message'] });
+    // getUpdates has its own retry loop below (the outer catch backs off and
+    // tries again), so use tgOnce here rather than stacking tg()'s retries on
+    // top of a 20s long-poll timeout.
+    const updates = await tgOnce('getUpdates', { offset: offset + 1, timeout: 20, allowed_updates: ['message'] });
     for (const u of updates) {
       offset = Math.max(offset, u.update_id);
       const msg = u.message;

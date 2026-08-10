@@ -7,8 +7,8 @@
 // Each job is also exported so the app can trigger it on demand (handy for
 // testing from the website's "admin" panel).
 import cron from 'node-cron';
-import { db, logEvent } from './db.js';
-import { mondayOf, nextMonday, shiftIso, prettyWeek, todayIso, hourInTZ } from './util.js';
+import { db, logEvent, getKV, setKV } from './db.js';
+import { mondayOf, nextMonday, shiftIso, prettyWeek, todayIso, hourInTZ, dowInTZ } from './util.js';
 import { buildProposal, finalize, awayUserIds, userWeek, activeUsers } from './rotation.js';
 import { announce, dm } from './messaging/index.js';
 import { availabilityAsk, finalMessage, weekendReminder, recapMessage } from './messages.js';
@@ -48,6 +48,7 @@ export function runSundayProposal() {
   if (!rows.length) { logEvent('system', 'Proposal skipped — add roommates and chores first.'); return; }
   announce(availabilityAsk(week));
   logEvent('rotation', `Asked who's home for the week of ${week} (rotation drafted silently).`);
+  setKV('sunday_proposal_done', shiftIso(todayIso(), -dowInTZ()));
   return rows;
 }
 
@@ -74,24 +75,62 @@ export function runWeekendReminders() {
     logEvent('message', `Weekend reminder sent to ${u.name} (${todo.length} left).`, u.id);
     count++;
   }
+  const saturday = shiftIso(todayIso(), -((dowInTZ() - 6 + 7) % 7));
+  setKV('saturday_reminder_done', saturday);
   if (count === 0) announce("Weekend check-in: every chore is done. Choremaster has no one to punish. Rare.");
   return count;
 }
 
-// Boot-time recovery: if the machine was down when Monday 8am came and went,
-// the week never got finalized (and away roommates' chores never got
-// redistributed). Detect that on startup and run the missed finalize now.
+// True once we're actually past `hour` on `dateIso` in TZ — never run a job early.
+function pastScheduledTime(dateIso, hour = 8) {
+  return todayIso() > dateIso || (todayIso() === dateIso && hourInTZ() >= hour);
+}
+
+// Boot-time (and hourly) recovery: the whole process can be down when a job
+// was due to fire — a crashed login session, a dead tunnel, whatever — and
+// unlike a single failed send, a dead process never even attempts the job, so
+// there's nothing in the event log to react to. Each job below is checked
+// independently against its own last-run marker and re-run if it was missed.
 export function catchUpIfMissed() {
+  const monday = catchUpMondayFinal();
+  const sunday = catchUpSundayProposal();
+  const saturday = catchUpSaturdayReminders();
+  return monday || sunday || saturday;
+}
+
+function catchUpMondayFinal() {
   const week = mondayOf();
   const hasFinal = db
     .prepare('SELECT COUNT(*) AS n FROM assignments WHERE week_start = ? AND is_final = 1')
     .get(week).n > 0;
-  if (hasFinal) return false;
-  // Only once we're actually past Monday 8am in TZ — never finalize early.
-  const pastMonday8 = todayIso() > week || (todayIso() === week && hourInTZ() >= 8);
-  if (!pastMonday8) return false;
+  if (hasFinal || !pastScheduledTime(week)) return false;
   logEvent('system', `Missed the Monday finalize for the week of ${week} (server was down) — running it now.`);
   runMondayFinal();
+  return true;
+}
+
+function catchUpSundayProposal() {
+  const sunday = shiftIso(todayIso(), -dowInTZ());
+  if (!pastScheduledTime(sunday) || getKV('sunday_proposal_done') === sunday) return false;
+  const week = shiftIso(sunday, 1);
+  // Once that week is already finalized, finalize() has its own fallback to
+  // build a proposal from scratch — a late roll-call would just be noise.
+  const hasFinal = db.prepare('SELECT COUNT(*) AS n FROM assignments WHERE week_start = ? AND is_final = 1').get(week).n > 0;
+  if (hasFinal) { setKV('sunday_proposal_done', sunday); return false; }
+  logEvent('system', `Missed Sunday's roll call for the week of ${week} (server was down) — running it now.`);
+  runSundayProposal();
+  return true;
+}
+
+function catchUpSaturdayReminders() {
+  const saturday = shiftIso(todayIso(), -((dowInTZ() - 6 + 7) % 7));
+  if (!pastScheduledTime(saturday) || getKV('saturday_reminder_done') === saturday) return false;
+  // Reminders are time-sensitive ("finish by Sunday") — once Sunday's roll
+  // call is itself due, a late reminder for the week that's closing out is
+  // just noise, not a recovery.
+  if (dowInTZ() === 0 && hourInTZ() >= 8) { setKV('saturday_reminder_done', saturday); return false; }
+  logEvent('system', `Missed Saturday's reminders for ${saturday} (server was down) — sending them now.`);
+  runWeekendReminders();
   return true;
 }
 
@@ -103,4 +142,8 @@ export function startScheduler() {
   logEvent('system', `Scheduler armed (TZ=${TZ}): Sun 8a proposal, Mon 8a final, Sat 8a reminders.`);
   console.log(`[scheduler] jobs armed in ${TZ}`);
   catchUpIfMissed();
+  // Cron can silently miss a firing (e.g. a wedged event loop, DST edge)
+  // without the process ever restarting, so boot-time recovery alone isn't
+  // enough. Re-check hourly too.
+  cron.schedule('0 * * * *', catchUpIfMissed, opts);
 }

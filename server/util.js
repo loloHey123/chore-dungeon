@@ -58,6 +58,11 @@ export function todayIso() {
   return iso(y, m, d);
 }
 
+// Day of week (0=Sun..6=Sat) in the configured timezone.
+export function dowInTZ(date = new Date()) {
+  return ymdInTZ(date).dow;
+}
+
 // Integer index of a week for round-robin rotation (weeks since an epoch Monday).
 export function weekIndex(isoMonday) {
   const [y, m, d] = isoMonday.split('-').map(Number);
